@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圍棋人機對戰排名賽</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1, h2 { text-align: center; color: #2c3e50; }
+        .section { display: none; }
+        .section.active { display: block; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="number"], input[type="password"] { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #3498db; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        button:hover { background-color: #2980b9; }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        button.admin-btn { background-color: #e74c3c; margin-top: 20px; width: 100%;}
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: center; }
+        th { background-color: #3498db; color: white; }
+        .game-board-placeholder { height: 300px; background-color: #e0b06b; border: 2px solid #5c3a21; display: flex; align-items: center; justify-content: center; margin-bottom: 15px;}
+        .nav-buttons { display: flex; justify-content: space-between; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="nav-buttons">
+        <button onclick="showSection('login-section')">回首頁 (登錄)</button>
+        <button onclick="showLeaderboard()">查看排行榜</button>
+        <button onclick="showSection('admin-login-section')">管理員後台</button>
+    </div>
+
+    <div id="login-section" class="section active">
+        <h1>圍棋人機對戰排名賽</h1>
+        <div class="form-group">
+            <label for="className">班級 (例如：三年二班)</label>
+            <input type="text" id="className" placeholder="請輸入班級">
+        </div>
+        <div class="form-group">
+            <label for="playerName">學生姓名</label>
+            <input type="text" id="playerName" placeholder="請輸入姓名">
+        </div>
+        <button onclick="startGame()" style="width: 100%;">開始對戰</button>
+    </div>
+
+    <div id="game-section" class="section">
+        <h2>對戰進行中...</h2>
+        <p>玩家：<span id="display-name"></span> | 班級：<span id="display-class"></span></p>
+        
+        <div class="game-board-placeholder">
+            <h3>(此處放置你的圍棋 AI 對戰介面)</h3>
+        </div>
+
+        <button id="submit-btn" onclick="simulateGameOver()">結束對戰並送出成績</button>
+    </div>
+
+    <div id="leaderboard-section" class="section">
+        <h2>🏆 榮譽排行榜 (前10名) 🏆</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>排名</th>
+                    <th>班級</th>
+                    <th>姓名</th>
+                    <th>最高得分</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+            </tbody>
+        </table>
+    </div>
+
+    <div id="admin-login-section" class="section">
+        <h2>管理員登入</h2>
+        <input type="password" id="admin-pwd" placeholder="請輸入密碼 (預設: admin123)">
+        <button onclick="checkAdmin()">登入</button>
+    </div>
+
+    <div id="admin-section" class="section">
+        <h2>管理員控制台</h2>
+        <p style="color: #e74c3c; font-weight: bold;">提示：要匯出資料或刪除資料，請直接開啟您的 Google 試算表操作即可，最直觀也最安全！</p>
+        <a href="https://docs.google.com/spreadsheets/" target="_blank">
+            <button style="background-color: #27ae60;">打開 Google 試算表</button>
+        </a>
+        
+        <h3>最近對戰紀錄</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>時間</th>
+                    <th>班級</th>
+                    <th>姓名</th>
+                    <th>得分</th>
+                </tr>
+            </thead>
+            <tbody id="admin-table-body">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // !!! 請將這裡替換成你剛剛部署的網頁應用程式網址 !!!
+    // ==========================================
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz280uOXdBbSHjPVtqvysgBG6HkHuYjgMyTozXdID57p53bCizKde6ZsRAUR1ZjXPnD/exec'; 
+
+    let currentPlayer = { className: "", name: "" };
+
+    // === UI 切換邏輯 ===
+    function showSection(sectionId) {
+        document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+        document.getElementById(sectionId).classList.add('active');
+    }
+
+    // === 1. 開始遊戲邏輯 ===
+    function startGame() {
+        const className = document.getElementById('className').value.trim();
+        const name = document.getElementById('playerName').value.trim();
+        
+        if (!className || !name) {
+            alert("請填寫班級和姓名喔！");
+            return;
+        }
+
+        currentPlayer.className = className;
+        currentPlayer.name = name;
+        
+        document.getElementById('display-class').innerText = className;
+        document.getElementById('display-name').innerText = name;
+        
+        showSection('game-section');
+    }
+
+    // === 2. 儲存成績邏輯 (寫入試算表) ===
+    function simulateGameOver() {
+        const score = Math.floor(Math.random() * 100) + 1; 
+        alert(`對戰結束！你的得分是：${score}\n正在上傳成績...`);
+
+        const submitBtn = document.getElementById('submit-btn');
+        submitBtn.disabled = true; // 防止重複點擊
+        submitBtn.innerText = "上傳中...";
+
+        const payload = {
+            className: currentPlayer.className,
+            name: currentPlayer.name,
+            score: score
+        };
+
+        // 使用 fetch 發送 POST 請求到 GAS
+        // 使用 text/plain 是為了避免跨域請求 (CORS) 的預檢問題
+        fetch(SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if(result.status === "success") {
+                alert("成績已成功上傳雲端！");
+                showLeaderboard();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert("上傳失敗，請檢查網路連線。");
+        })
+        .finally(() => {
+            submitBtn.disabled = false;
+            submitBtn.innerText = "結束對戰並送出成績";
+        });
+    }
+
+    // === 3. 讀取排行榜邏輯 (從試算表讀取) ===
+    function showLeaderboard() {
+        showSection('leaderboard-section');
+        const tbody = document.getElementById('leaderboard-body');
+        tbody.innerHTML = "<tr><td colspan='4'>成績載入中，請稍候...</td></tr>";
+
+        fetch(SCRIPT_URL)
+        .then(response => response.json())
+        .then(data => {
+            // 在前端進行排序 (依分數由高到低)
+            data.sort((a, b) => b.score - a.score);
+            
+            // 取前 10 名
+            const top10 = data.slice(0, 10);
+            
+            tbody.innerHTML = "";
+            if(top10.length === 0) {
+                tbody.innerHTML = "<tr><td colspan='4'>目前還沒有成績喔！</td></tr>";
+                return;
+            }
+
+            top10.forEach((row, index) => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${row.className}</td>
+                        <td>${row.name}</td>
+                        <td>${row.score}</td>
+                    </tr>
+                `;
+            });
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            tbody.innerHTML = "<tr><td colspan='4'>載入失敗。</td></tr>";
+        });
+    }
+
+    // === 4. 管理員後台邏輯 ===
+    function checkAdmin() {
+        const pwd = document.getElementById('admin-pwd').value;
+        if (pwd === 'admin123') { 
+            document.getElementById('admin-pwd').value = '';
+            loadAdminData();
+            showSection('admin-section');
+        } else {
+            alert("密碼錯誤！");
+        }
+    }
+
+    function loadAdminData() {
+        const tbody = document.getElementById('admin-table-body');
+        tbody.innerHTML = "<tr><td colspan='4'>資料載入中...</td></tr>";
+
+        fetch(SCRIPT_URL)
+        .then(response => response.json())
+        .then(data => {
+            // 反轉陣列，讓最新的資料顯示在最上面
+            data.reverse();
+            
+            tbody.innerHTML = "";
+            data.forEach(row => {
+                // 將時間格式稍微整理一下
+                const dateObj = new Date(row.timestamp);
+                const timeString = dateObj.toLocaleString('zh-TW', {hour12: false});
+                
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${timeString}</td>
+                        <td>${row.className}</td>
+                        <td>${row.name}</td>
+                        <td>${row.score}</td>
+                    </tr>
+                `;
+            });
+        });
+    }
+</script>
+
+</body>
+</html>
